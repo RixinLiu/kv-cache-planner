@@ -1,0 +1,41 @@
+_ > nanoagent.plugin.v0001.ManifestConfig:
+id: kv-cache-planner
+name: KV Cache Planner
+version: 0.1.0
+status: ready
+spec: nanoagent.plugin/v0001
+
+runtime > nanoagent.plugin.v0001.RuntimeConfig:
+  type: mcp_stdio
+  command: [uv, run, --frozen, python, -m, plugin]
+
+permissions > nanoagent.plugin.v0001.PermissionsConfig:
+  network > nanoagent.plugin.v0001.NetworkConfig:
+    hosts: []
+  filesystem > nanoagent.plugin.v0001.FilesystemConfig:
+    write: [workspace]
+
+# One entry per contract.Tool; its input and output classes are contract.TOOLS's.
+tools > dict[contract.Tool, nanoagent.plugin.v0001.ToolConfig]:
+  read_case:
+    description: Read a case's model config.json, GPU memory, reserved memory, context length and KV cache dtype
+  calculate:
+    description: Work out an integer expression exactly, with + - * // ** and parentheses
+  case_record:
+    description: Read a case as read_case does, the ground truth the verifier plans again
+
+# One entry per contract.Task; its input and output classes are contract.TASKS's.
+tasks > dict[contract.Task, nanoagent.plugin.v0001.TaskConfig]:
+  plan-kv-cache:
+    description: Work out a model's size, its KV cache per token and per sequence, and how many sequences fit on a GPU
+    runner: agent
+    tools: [read_case, calculate]
+    reference: case_record
+    instructions: |-
+      Plan the case's deployment. Read it with read_case. Work out every sum, product, difference and quotient with calculate, never in your head, and copy its values exactly.
+      From config_json: hidden = hidden_size, layers = num_hidden_layers, heads = num_attention_heads, inter = intermediate_size, vocab = vocab_size. kv_heads = num_key_value_heads, or heads when the config has no num_key_value_heads. head_dim = the config's head_dim, or hidden // heads when it has none. attention_bias and tie_word_embeddings are false when the config does not set them. Ignore every other key.
+      param_count = layers * (one layer) + hidden (the final norm) + vocab * hidden (the embeddings) + vocab * hidden (the lm_head), except that the lm_head adds nothing when tie_word_embeddings is true. One layer is hidden * heads * head_dim (q) + 2 * hidden * kv_heads * head_dim (k and v) + heads * head_dim * hidden (o) + 3 * hidden * inter (the gated MLP: gate, up and down) + 2 * hidden (two norms), plus (heads + 2 * kv_heads) * head_dim when attention_bias is true.
+      Bytes per value: float32 4, bfloat16 2, float16 2, fp8 1. weight_bytes = param_count * the bytes of torch_dtype. The KV cache's dtype is kv_cache_dtype, or torch_dtype when kv_cache_dtype is auto.
+      kv_bytes_per_token = 2 (a key and a value) * layers * kv_heads * head_dim * the bytes of the KV cache's dtype. kv_bytes_per_sequence = kv_bytes_per_token * context_length, the case's context_length, not the config's max_position_embeddings.
+      Memory sizes: GiB = 1024**3 bytes, GB = 1000**3, MiB = 1024**2, MB = 1000**2. usable_bytes = gpu_memory - reserved_memory - weight_bytes; it is negative when the weights do not fit. max_batch = usable_bytes // kv_bytes_per_sequence, rounded down, or 0 when usable_bytes is 0 or less.
+      Submit the six integers.

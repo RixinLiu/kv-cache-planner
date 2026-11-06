@@ -1,0 +1,11 @@
+_ > nanoagent.plugin.v0001.ProductConfig:
+tagline: "Size an LLM deployment from its config.json, checked to the byte"
+summary: "Pick one of six cases, each a real model's config.json with a GPU, memory kept back, a context length and a KV cache dtype. The agent works out the model's parameters, its weights in bytes, its KV cache per token and per sequence, and how many sequences fit. Every number is checked exactly against a planner the verifier runs on its own."
+highlights:
+  - "Six integers checked exactly, each against an independent planner"
+  - "Cases cover grouped-query and multi-query attention, tied embeddings, fp8 KV caches, GB against GiB, a model that does not fit and an exact fit"
+  - "Exact integer arithmetic through a calculator tool, so no number is rounded"
+steps:
+  - "Ask it to plan a case, 1 to 6"
+  - "The agent reads the config and works out each size with the calculator"
+  - "The result shows the six numbers, with the verifier's verdict"
